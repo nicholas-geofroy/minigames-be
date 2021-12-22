@@ -13,7 +13,10 @@ func NewPoint(x int, y int) Point {
 }
 
 type Player struct {
-	body *Body
+	body      *Body
+	xVel      float64
+	jumpForce float64
+	canJump   bool
 }
 
 func NewPlayer(id int, body *Body) *Player {
@@ -22,12 +25,13 @@ func NewPlayer(id int, body *Body) *Player {
 	}
 }
 
-func (p *Player) MoveLeft() {
+func (p *Player) ApplyMove(dir Vec2) {
+	p.body.vel.X = dir.X * p.xVel
 }
 
-func (p *Player) MoveRight() {
-}
-
-func (p *Player) Jump() {
-
+func (p *Player) OnCollision(c *Collision) {
+	p.canJump = false
+	if c.normal.Y < 0 {
+		p.canJump = true
+	}
 }

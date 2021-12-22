@@ -8,7 +8,7 @@ import (
 
 type Lobby struct {
 	id      string
-	in      chan LobbyMsg
+	in      chan ClientMsg
 	clients map[string]*Client
 	log     echo.Logger
 
@@ -16,6 +16,8 @@ type Lobby struct {
 
 	Register   chan *Client
 	Unregister chan *Client
+
+	receiveFunc func(ClientMsg)
 }
 
 func NewLobby(id string, logger echo.Logger) *Lobby {
@@ -23,22 +25,17 @@ func NewLobby(id string, logger echo.Logger) *Lobby {
 		id:         id,
 		clients:    make(map[string]*Client, 0),
 		log:        logger,
-		in:         make(chan LobbyMsg),
+		in:         make(chan ClientMsg),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 	}
+	l.receiveFunc = l.lobbyReceive
 	go l.Run()
 	return l
 }
 
 func (l *Lobby) Run() {
 	l.log.Debug("Run Start")
-	l.game = game.NewGame(func(o []game.Object) {
-		newState := MessageRender(o)
-		l.broadcast(newState)
-	})
-	l.game.StartGame()
-
 	for {
 		select {
 		case c := <-l.Register:
@@ -54,7 +51,42 @@ func (l *Lobby) Run() {
 			}
 
 		case m := <-l.in:
-			l.log.Info("received message %v", m)
+			l.log.Info("received message", m)
+			l.receiveFunc(m)
+		}
+	}
+}
+
+func (l *Lobby) lobbyReceive(m ClientMsg) {
+	switch m.msg.(type) {
+	case *StartMsg:
+		pIds := make([]string, 0, len(l.clients))
+		for pId := range l.clients {
+			pIds = append(pIds, pId)
+		}
+		l.log.Infof("start game with players %+v", pIds)
+		l.game = game.NewGame(func(o []game.Object) {
+			newState := MessageRender(o)
+			l.broadcast(newState)
+		}, pIds)
+		l.game.StartGame()
+		l.receiveFunc = l.gameReceive
+	default:
+		l.clients[m.clientId].out <- &ErrorMsg{
+			errorType: 0,
+			msg:       "Invalid Move",
+		}
+	}
+}
+
+func (l *Lobby) gameReceive(m ClientMsg) {
+	switch msg := m.msg.(type) {
+	case *MoveMsg:
+		l.game.MakeMove(m.clientId, msg.ToVec())
+	default:
+		l.clients[m.clientId].out <- &ErrorMsg{
+			errorType: 0,
+			msg:       "Invalid Move",
 		}
 	}
 }

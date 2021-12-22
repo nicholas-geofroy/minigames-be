@@ -7,6 +7,11 @@ type OutMsg struct {
 	Data    interface{}
 }
 
+type ClientMsg struct {
+	clientId string
+	msg      LobbyMsg
+}
+
 type LobbyMsg interface {
 	Type() int
 }
@@ -28,23 +33,39 @@ func (e *MembersMsg) Type() int {
 	return 2
 }
 
+const startMsgType = 3
+
 type StartMsg struct{}
 
 func (e *StartMsg) Type() int {
-	return 3
+	return startMsgType
 }
 
 const (
-	left  = 0
-	right = 1
+	noDir       = 0
+	left        = 1
+	right       = 2
+	moveMsgType = 4
 )
 
 type MoveMsg struct {
-	direction int
+	Direction float64
 }
 
 func (e *MoveMsg) Type() int {
-	return 4
+	return moveMsgType
+}
+
+func (e *MoveMsg) ToVec() game.Vec2 {
+	v := game.Vec2{X: 0, Y: 0}
+
+	switch e.Direction {
+	case left:
+		v.X = -1
+	case right:
+		v.X = 1
+	}
+	return v
 }
 
 type JumpMsg struct{}

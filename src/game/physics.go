@@ -101,10 +101,15 @@ func GeneratePairs(bodies []*Body) []*Pair {
 	return pairs
 }
 
-func UpdatePhysics(dt float64, bodies []*Body) {
+type ForceFunc func(*Body)
+
+func UpdatePhysics(dt float64, bodies []*Body, forces []ForceFunc) {
 	//determine forces on each body
 	for _, body := range bodies {
 		ApplyGravity(body)
+		for _, force := range forces {
+			force(body)
+		}
 	}
 	//collision forces
 	pairs := GeneratePairs(bodies)

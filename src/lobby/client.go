@@ -5,6 +5,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -64,6 +65,24 @@ func (c *Client) readMessages() {
 		}
 
 		c.logger.Debugf("Received message:\n type: %d\n data:%+v\n", msg.MsgType, msg.Data)
+		var res LobbyMsg
+		switch msg.MsgType {
+		case moveMsgType:
+			t := &MoveMsg{}
+			err = mapstructure.Decode(msg.Data, t)
+			res = t
+		case startMsgType:
+			res = &StartMsg{}
+		}
+
+		if err != nil {
+			c.logger.Error("Invalid message: ", err)
+		} else {
+			c.lobby.in <- ClientMsg{
+				clientId: c.id,
+				msg:      res,
+			}
+		}
 	}
 }
 

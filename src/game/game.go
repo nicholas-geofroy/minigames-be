@@ -5,27 +5,47 @@ import (
 	"time"
 )
 
+type Move struct {
+	dir    Vec2
+	player string
+}
+
 type Game struct {
 	bodies  []*Body
 	players map[string]*Player
 	mapSize Vec2
 
 	render RenderFunc
-	stop   chan bool
+
+	stop  chan bool
+	moves chan Move
+
+	forces []ForceFunc
 }
 
-func NewGame(render RenderFunc) *Game {
+func NewGame(render RenderFunc, playerIds []string) *Game {
 	g := &Game{
 		bodies:  make([]*Body, 0),
 		players: make(map[string]*Player),
 		mapSize: Vec2{1000, 1000},
 		render:  render,
+		stop:    make(chan bool),
+		moves:   make(chan Move),
+		forces:  make([]ForceFunc, 0),
 	}
 
-	g.bodies = append(g.bodies, NewCircleBody(
-		Vec2{200, 200},
-		50,
-		*NewMass(50), Material{density: 5, restitution: 0.5}, 0.01))
+	for i, pId := range playerIds {
+		pBody := NewCircleBody(
+			Vec2{50.0 * float64(i+1), 200},
+			50,
+			*NewMass(50), Material{density: 5, restitution: 0.5}, 0)
+		g.players[pId] = &Player{
+			body:      pBody,
+			xVel:      10,
+			jumpForce: 50,
+		}
+		g.bodies = append(g.bodies, pBody)
+	}
 
 	return g
 }
@@ -36,6 +56,10 @@ func (g *Game) StartGame() {
 
 func (g *Game) StopGame() {
 	g.stop <- true
+}
+
+func (g *Game) MakeMove(player string, dir Vec2) {
+	g.moves <- Move{player: player, dir: dir}
 }
 
 func (g *Game) Loop() {
@@ -59,22 +83,27 @@ func (g *Game) Loop() {
 	frameTicker := time.NewTicker(dt)
 
 	defer frameTicker.Stop()
+	nextMoves := make(map[string]Vec2, 4)
 
 	//Game Loop
 	for {
-		select {
-		case _, ok := <-g.stop:
-			if ok {
+	read_messages:
+		for {
+			select {
+			case _, _ = <-g.stop:
 				return
+			case _, ok := <-frameTicker.C:
+				if !ok {
+					return
+				}
+				//continue with game loop
+				break read_messages
+			case m := <-g.moves:
+				nextMoves[m.player] = m.dir
 			}
-		case _, ok := <-frameTicker.C:
-			if !ok {
-				return
-			}
-			//continue with loop
 		}
-		curTime := time.Now()
 
+		curTime := time.Now()
 		accumulator += curTime.Sub(frameStart)
 		frameStart = curTime
 
@@ -86,13 +115,25 @@ func (g *Game) Loop() {
 		}
 
 		for accumulator > dt {
-			UpdatePhysics(dtf, g.bodies)
+			g.ApplyMoves(nextMoves)
+			UpdatePhysics(dtf, g.bodies, g.forces)
 			accumulator -= dt
 		}
 
 		alpha := accumulator / dt
 
 		RenderGame(float64(alpha), objects, g.render)
+	}
+}
+
+func (g *Game) ApplyMoves(moves map[string]Vec2) {
+	for pId, dir := range moves {
+		p, ok := g.players[pId]
+		if !ok {
+			fmt.Println("player", pId, "not in players")
+		} else {
+			p.ApplyMove(dir)
+		}
 	}
 }
 
